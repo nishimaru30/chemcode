@@ -1,0 +1,58 @@
+{
+  "molecular_weight": {
+    "title": "Molecular Weight Calculator",
+    "difficulty": "Easy",
+    "time_estimate": "10-15 minutes",
+    "description": "Given a molecular formula as a string, calculate its molecular weight in g/mol.\n\n**Atomic weights to use:**\n- H: 1.008\n- C: 12.011\n- N: 14.007\n- O: 15.999\n- S: 32.065\n\n**Rules:**\n- Elements are represented by their symbols (H, C, O, etc.)\n- Numbers after elements indicate quantity (H2O means 2 H atoms, 1 O atom)\n- If no number is given, assume quantity is 1",
+    "examples": [
+      {"input": "H2O", "output": "18.015"},
+      {"input": "CO2", "output": "44.009"},
+      {"input": "C6H12O6", "output": "180.156"}
+    ],
+    "constraints": "Formula will only contain H, C, N, O, S and numbers",
+    "starter_code": "def molecular_weight(formula):\n    # Atomic weights dictionary\n    weights = {\n        'H': 1.008,\n        'C': 12.011,\n        'N': 14.007,\n        'O': 15.999,\n        'S': 32.065\n    }\n    \n    # Your solution here\n    pass",
+    "test_cases": [
+      {"input": ["H2O"], "expected": 18.015},
+      {"input": ["CO2"], "expected": 44.009},
+      {"input": ["CH4"], "expected": 16.043},
+      {"input": ["C6H12O6"], "expected": 180.156}
+    ]
+  },
+  "element_counter": {
+    "title": "Element Counter",
+    "difficulty": "Easy", 
+    "time_estimate": "10-15 minutes",
+    "description": "Given a molecular formula, return a dictionary counting each element.\n\n**Example:** H2O should return {'H': 2, 'O': 1}\n\n**Rules:**\n- Count each type of atom in the molecule\n- Return as a dictionary with element symbols as keys\n- Values should be the count of each element",
+    "examples": [
+      {"input": "H2O", "output": "{'H': 2, 'O': 1}"},
+      {"input": "CaCO3", "output": "{'Ca': 1, 'C': 1, 'O': 3}"},
+      {"input": "CH4", "output": "{'C': 1, 'H': 4}"}
+    ],
+    "starter_code": "def count_elements(formula):\n    # Your solution here\n    # Return a dictionary with element counts\n    pass",
+    "test_cases": [
+      {"input": ["H2O"], "expected": {"H": 2, "O": 1}},
+      {"input": ["CaCO3"], "expected": {"Ca": 1, "C": 1, "O": 3}},
+      {"input": ["CH4"], "expected": {"C": 1, "H": 4}},
+      {"input": ["NaCl"], "expected": {"Na": 1, "Cl": 1}}
+    ]
+  },
+  "ph_calculator": {
+    "title": "pH Calculator",
+    "difficulty": "Medium",
+    "time_estimate": "15-20 minutes", 
+    "description": "Calculate pH given hydrogen ion concentration [H+] in mol/L.\n\n**Formula:** pH = -log10([H+])\n\n**Rules:**\n- Input is the hydrogen ion concentration as a float\n- Use the logarithm base 10\n- Return pH rounded to 2 decimal places",
+    "examples": [
+      {"input": "0.001", "output": "3.0"},
+      {"input": "1e-7", "output": "7.0"},
+      {"input": "0.01", "output": "2.0"}
+    ],
+    "starter_code": "import math\n\ndef calculate_ph(h_concentration):\n    # Calculate pH using the formula: pH = -log10([H+])\n    # Your solution here\n    pass",
+    "test_cases": [
+      {"input": [0.001], "expected": 3.0},
+      {"input": [1e-7], "expected": 7.0}, 
+      {"input": [0.01], "expected": 2.0},
+      {"input": [1e-4], "expected": 4.0}
+    ]
+  }
+}
+
