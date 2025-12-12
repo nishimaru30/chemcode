@@ -1,10 +1,9 @@
 import streamlit as st
+import streamlit_authenticator as stauth
+import yaml
+from yaml.loader import SafeLoader
+from supabase import create_client
 import json
-import sqlite3
-import pandas as pd
-from datetime import datetime
-import sys
-from io import StringIO
 
 # Page configuration
 st.set_page_config(
@@ -13,185 +12,139 @@ st.set_page_config(
     layout="wide"
 )
 
-# Initialize SQLite database
-def init_db():
-    conn = sqlite3.connect('chemcode.db')
-    c = conn.cursor()
-    c.execute("""CREATE TABLE IF NOT EXISTS submissions
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                  problem_id TEXT,
-                  user_code TEXT,
-                  result TEXT,
-                  timestamp DATETIME)""")
-    conn.commit()
-    conn.close()
+# Initialize Supabase for user storage (instead of YAML file)
+@st.cache_resource
+def init_supabase():
+    url = st.secrets["supabase"]["url"]
+    key = st.secrets["supabase"]["key"]
+    return create_client(url, key)
 
-# Load problems from JSON
-@st.cache_data
-def load_problems():
-    try:
-        with open('problems.json', 'r') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        st.error("problems.json file not found!")
-        return {}
+db = init_supabase()
 
-# Execute user code safely
-def execute_code(code, test_cases):
-    results = []
-    for test_case in test_cases:
+# Load users from database
+def load_user_credentials():
+    """Load all users from Supabase"""
+    response = db.table('users').select('*').execute()
+    
+    credentials = {'usernames': {}}
+    for user in response.data:
+        credentials['usernames'][user['username']] = {
+            'email': user['email'],
+            'name': user['name'],
+            'password': user['password']
+        }
+    return credentials
+
+# Save new user to database
+def save_new_user(username, name, email, hashed_password):
+    """Save new registered user to Supabase"""
+    db.table('users').insert({
+        'username': username,
+        'name': name,
+        'email': email,
+        'password': hashed_password
+    }).execute()
+
+# Initialize authenticator
+def setup_authentication():
+    credentials = load_user_credentials()
+    
+    config = {
+        'credentials': credentials,
+        'cookie': {
+            'name': 'chemcode_cookie',
+            'key': 'random_signature_key_12345',  # Change this!
+            'expiry_days': 30
+        }
+    }
+    
+    authenticator = stauth.Authenticate(
+        config['credentials'],
+        config['cookie']['name'],
+        config['cookie']['key'],
+        config['cookie']['expiry_days']
+    )
+    return authenticator
+
+def main():
+    st.title("⚗️ ChemCode - Chemistry Coding Challenges")
+    
+    authenticator = setup_authentication()
+    
+    # Create tabs for Login and Sign Up
+    tab1, tab2 = st.tabs(["🔐 Login", "📝 Sign Up"])
+    
+    with tab1:
+        # Login widget
         try:
-            # Capture stdout
-            old_stdout = sys.stdout
-            sys.stdout = StringIO()
+            authenticator.login()
+        except Exception as e:
+            st.error(e)
+    
+    with tab2:
+        # Registration widget - ANYONE can register!
+        try:
+            email_of_registered_user, username_of_registered_user, name_of_registered_user = \
+                authenticator.register_user(
+                    location='main',
+                    preauthorization=False  # Set to False to allow ANYONE to register
+                )
             
-            # Create namespace for execution
-            namespace = {}
-            exec(code, namespace)
-            
-            # Find the function
-            func_name = None
-            for name, obj in namespace.items():
-                if callable(obj) and not name.startswith('_'):
-                    func_name = name
-                    break
-            
-            if func_name:
-                result = namespace[func_name](*test_case['input'])
-                expected = test_case['expected']
-                sys.stdout = old_stdout
+            if email_of_registered_user:
+                st.success('✅ Account created successfully! Please login.')
                 
-                if result == expected:
-                    results.append({"status": "PASS", "input": test_case['input'], 
-                                  "expected": expected, "got": result})
-                else:
-                    results.append({"status": "FAIL", "input": test_case['input'], 
-                                  "expected": expected, "got": result})
-            else:
-                sys.stdout = old_stdout
-                results.append({"status": "ERROR", "message": "No function found"})
+                # Save to database
+                hashed_password = stauth.Hasher([username_of_registered_user]).generate()[0]
+                save_new_user(
+                    username_of_registered_user,
+                    name_of_registered_user,
+                    email_of_registered_user,
+                    hashed_password
+                )
                 
         except Exception as e:
-            sys.stdout = old_stdout
-            results.append({"status": "ERROR", "message": str(e)})
+            st.error(e)
     
-    return results
-
-# Main application
-def main():
-    # Initialize database
-    init_db()
-    
-    st.title("⚗️ ChemCode - Chemistry Coding Challenges")
-    st.markdown("*Practice chemistry problems with Python - 15 minutes a day!*")
-    
-    # Load problems
-    problems = load_problems()
-    if not problems:
-        return
-    
-    # Sidebar navigation
-    st.sidebar.title("📚 Problems")
-    selected_problem = st.sidebar.selectbox("Select Problem", list(problems.keys()))
-    
-    if selected_problem:
-        problem = problems[selected_problem]
+    # Check if user is logged in
+    if st.session_state.get('authentication_status'):
+        # User is logged in - show the app!
+        username = st.session_state['username']
+        name = st.session_state['name']
         
-        # Create two columns
-        col1, col2 = st.columns([1, 1])
+        # Logout button in sidebar
+        authenticator.logout('Logout', 'sidebar')
+        st.sidebar.write(f"👋 Welcome **{name}**!")
         
-        with col1:
-            # Problem description
-            st.header(f"Problem: {problem['title']}")
-            st.write(f"**Difficulty:** {problem['difficulty']}")
-            st.write(f"**Time:** {problem['time_estimate']}")
-            
-            st.markdown("### Description")
-            st.markdown(problem['description'])
-            
-            st.markdown("### Examples")
-            for example in problem['examples']:
-                st.code(f"Input: {example['input']}\nOutput: {example['output']}")
-            
-            if 'constraints' in problem:
-                st.markdown("### Constraints")
-                st.markdown(problem['constraints'])
+        # YOUR EXISTING CHEMCODE APP GOES HERE
+        # All the problem selection, code editor, etc.
+        st.markdown("*Practice chemistry problems with Python - 15 minutes a day!*")
         
-        with col2:
-            # Code editor
-            st.markdown("### Solution")
-            
-            default_code = problem.get('starter_code', '# Write your solution here\ndef solve():\n    pass')
-            user_code = st.text_area("Enter your Python code:", 
-                                   value=default_code, 
-                                   height=300)
-            
-            # Run button
-            if st.button("🚀 Run Code", type="primary"):
-                if user_code.strip():
-                    # Execute code
-                    results = execute_code(user_code, problem['test_cases'])
-                    
-                    # Display results
-                    st.markdown("### Results")
-                    
-                    passed = sum(1 for r in results if r.get('status') == 'PASS')
-                    total = len(results)
-                    
-                    if passed == total:
-                        st.success(f"✅ All tests passed! ({passed}/{total})")
-                    else:
-                        st.error(f"❌ {passed}/{total} tests passed")
-                    
-                    # Show detailed results
-                    for i, result in enumerate(results, 1):
-                        with st.expander(f"Test Case {i} - {result['status']}"):
-                            if result['status'] in ['PASS', 'FAIL']:
-                                st.write(f"**Input:** {result['input']}")
-                                st.write(f"**Expected:** {result['expected']}")
-                                st.write(f"**Got:** {result['got']}")
-                            else:
-                                st.write(f"**Error:** {result['message']}")
-                    
-                    # Save submission to database
-                    conn = sqlite3.connect('chemcode.db')
-                    c = conn.cursor()
-                    c.execute("INSERT INTO submissions VALUES (NULL, ?, ?, ?, ?)",
-                             (selected_problem, user_code, f"{passed}/{total}", datetime.now()))
-                    conn.commit()
-                    conn.close()
-                else:
-                    st.warning("Please enter some code!")
-    
-    # Progress tracking in sidebar
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### 📊 Your Progress")
-    
-    conn = sqlite3.connect('chemcode.db')
-    try:
-        submissions_df = pd.read_sql_query("SELECT * FROM submissions", conn)
+        problems = load_problems()
+        if not problems:
+            return
         
-        if not submissions_df.empty:
-            total_attempts = len(submissions_df)
-            problems_attempted = submissions_df['problem_id'].nunique()
-            successful_submissions = len(submissions_df[submissions_df['result'].str.contains('3/3')])
-            
-            st.sidebar.write(f"📝 Total attempts: {total_attempts}")
-            st.sidebar.write(f"🎯 Problems tried: {problems_attempted}")
-            st.sidebar.write(f"✅ Successful solutions: {successful_submissions}")
-            
-            # Recent submissions
-            st.sidebar.markdown("**Recent submissions:**")
-            for _, row in submissions_df.tail(3).iterrows():
-                st.sidebar.write(f"- {row['problem_id']}: {row['result']}")
+        st.sidebar.title("📚 Problems")
+        selected_problem = st.sidebar.selectbox("Select Problem", list(problems.keys()))
+        
+        # ... rest of your existing code ...
+        
+        # Track progress per user
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("### 📊 Your Progress")
+        
+        # Query submissions for THIS user only
+        user_submissions = db.table('submissions').select('*').eq('username', username).execute()
+        
+        if user_submissions.data:
+            total_attempts = len(user_submissions.data)
+            st.sidebar.write(f"📝 Your attempts: {total_attempts}")
         else:
             st.sidebar.write("No submissions yet. Start coding!")
-            
-    except Exception as e:
-        st.sidebar.write("No submissions yet.")
-    
-    conn.close()
+        
+    elif st.session_state.get('authentication_status') is False:
+        st.error('❌ Username/password is incorrect')
+    elif st.session_state.get('authentication_status') is None:
+        st.info('👈 Please login or sign up to start coding!')
 
 if __name__ == "__main__":
     main()
-
